@@ -7,37 +7,55 @@ ENERGY_CONTENT = {
     "LPG(프로판 1호)": 50.4  # MJ per kg
 }
 
+# 표준 기화율 및 조정기 보정계수
+STANDARD_EVAPORATION_RATE = 0.4837
+REGULATOR_CORRECTION = {
+    2.8: 1.000,
+    6.0: 1.0307,
+    10.0: 1.0692
+}
+
 # 기본 가격 (사용자 수정 가능)
 DEFAULT_PRICES = {
-    "도시가스(LNG)": 21.7,  # 원/MJ (float으로 변경)
-    "LPG(프로판 1호)": 2500.0  # 원/kg (float으로 변경)
+    "도시가스(LNG)": 21.7,  # 원/MJ
+    "LPG(프로판 1호)": 2500.0  # 원/kg
 }
 
 st.title("도시가스 vs LPG 비교")
 
 # 사이드바 입력
 st.sidebar.header("입력 값 설정")
-usage_type = st.sidebar.radio("사용량 입력 방식", ["Kg 단위", "금액 단위"])
+usage_type = st.sidebar.radio("사용량 입력 방식", ["Kg 단위", "m³ 단위", "금액 단위"])
 
-if usage_type == "Kg 단위":
-    usage_lpg_kg = st.sidebar.number_input("사용할 LPG량 (kg)", min_value=1, value=20, step=1, format="%d", key="usage_lpg_kg")
+if usage_type == "m³ 단위":
+    regulator_pressure = st.sidebar.selectbox("조정기 압력 선택 (kPa)", options=[2.8, 6.0, 10.0])
+    st.sidebar.markdown(f"**표준 기화율:** {STANDARD_EVAPORATION_RATE}")
+    st.sidebar.markdown(f"**현재 선택된 조정기 보정계수:** {REGULATOR_CORRECTION[regulator_pressure]}")
+    
+    usage_lpg_m3 = st.sidebar.number_input("사용할 LPG량 (m³)", min_value=0.1, value=5.0, step=0.1, format="%.1f")
+    lpg_price = st.sidebar.number_input("LPG(프로판 1호) 가격 (원/kg)", min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.2f")
+    usage_lpg_kg = usage_lpg_m3 * STANDARD_EVAPORATION_RATE / REGULATOR_CORRECTION[regulator_pressure]
     usage_gj = usage_lpg_kg * ENERGY_CONTENT["LPG(프로판 1호)"]
-else:
-    usage_cost = st.sidebar.number_input("사용할 LPG 비용 (원)", min_value=1000, value=50000, step=10000, format="%d", key="usage_cost")
-    usage_lpg_kg = usage_cost / DEFAULT_PRICES["LPG(프로판 1호)"]
+
+elif usage_type == "Kg 단위":
+    usage_lpg_kg = st.sidebar.number_input("사용할 LPG량 (kg)", min_value=1, value=20, step=1, format="%d")
+    lpg_price = st.sidebar.number_input("LPG(프로판 1호) 가격 (원/kg)", min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.2f")
+    usage_gj = usage_lpg_kg * ENERGY_CONTENT["LPG(프로판 1호)"]
+
+else:  # 금액 단위
+    usage_cost = st.sidebar.number_input("사용할 LPG 비용 (원)", min_value=1000, value=50000, step=10000, format="%d")
+    lpg_price = st.sidebar.number_input("LPG(프로판 1호) 가격 (원/kg)", min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.2f")
+    usage_lpg_kg = usage_cost / lpg_price
     usage_gj = usage_lpg_kg * ENERGY_CONTENT["LPG(프로판 1호)"]
 
 # 도시가스 MJ당 가격 입력
-gas_mj_price = st.sidebar.number_input("도시가스 가격 (원/MJ)", min_value=0.0, value=float(DEFAULT_PRICES["도시가스(LNG)"]), format="%.2f", key="gas_mj_price")
+gas_mj_price = st.sidebar.number_input("도시가스 가격 (원/MJ)", min_value=0.0, value=float(DEFAULT_PRICES["도시가스(LNG)"]), format="%.2f")
+
+# 도시가스 초기 공사비 입력
+gas_install_cost = st.sidebar.number_input("도시가스 초기 공사비 (원)", min_value=1000000, value=3000000, step=100000, format="%d")
 
 # 도시가스 m³당 가격 환산
 gas_price = gas_mj_price * ENERGY_CONTENT["도시가스(LNG)"]
-
-# LPG 가격 입력
-lpg_price = st.sidebar.number_input("LPG(프로판 1호) 가격 (원/kg)", min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.2f", key="lpg_price")
-
-# 도시가스 초기 공사비 입력
-gas_install_cost = st.sidebar.number_input("도시가스 초기 공사비 (원)", min_value=int(1000000), value=int(3000000), step=int(100000), format="%d", key="gas_install_cost")
 
 # LPG MJ당 가격 계산
 lpg_mj_price = lpg_price / ENERGY_CONTENT["LPG(프로판 1호)"]
@@ -84,7 +102,6 @@ st.markdown("""
 3. **총 발열량 (MJ)** = `사용한 LPG량(kg) × LPG의 기준열량`
 4. **예상 비용** = `총 사용량 × 단위당 가격`
 5. **도시가스 기준 비율** = `(LPG의 열량당 가격 ÷ 도시가스의 열량당 가격) × 100`
-
 """)
 
 # 추가적인 경제성 분석 데이터
@@ -107,6 +124,4 @@ st.markdown("""
    - `절약 금액 = LPG 비용 - 도시가스 비용`
 3. **공사비 회수 기간:**
    - `회수 기간(개월) = 도시가스 공사비 ÷ 매월 절약금액`
-
 """)
-
