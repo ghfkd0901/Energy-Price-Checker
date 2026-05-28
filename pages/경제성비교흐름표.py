@@ -12,7 +12,6 @@ DEFAULT_PRICES = {
 STANDARD_EVAPORATION_RATE = 0.4837  # 대구·대전·울산·경북·경남 영남지역 표준 기화율
 
 # 조정기 압력별 보정계수 및 기화율
-# 출처: LPG 계량 관련 고시 (대구·대전광역시·울산광역시·경북·경남 영남지역 기준)
 REGULATOR_TABLE = {
     #  kPa : (보정계수,  기화율)
     2.8:  (1.0000, 0.4837),
@@ -22,7 +21,6 @@ REGULATOR_TABLE = {
     20.0: (1.1621, 0.4162),
     25.0: (1.2093, 0.4000),
 }
-# 하위 호환용 (보정계수만 필요한 곳에서 사용)
 REGULATOR_CORRECTION = {k: v[0] for k, v in REGULATOR_TABLE.items()}
 
 
@@ -42,7 +40,6 @@ def card(label: str, value: str, sub: str = "", color: str = "#1e3a8a",
 
 
 def op(symbol: str, height: int = 90):
-    """연산기호 (×, ÷, =, →) - 카드와 동일 높이로 수직 중앙 정렬"""
     st.markdown(f"""
 <div style='height:{height}px;display:flex;align-items:center;
             justify-content:center;font-size:20px;color:#9ca3af;font-weight:300'>
@@ -92,66 +89,32 @@ if usage_type == "부피(m³)로 알아요":
     )
     correction, evap_rate = REGULATOR_TABLE[regulator_pressure]
 
-    default_m3 = round(20.0 / evap_rate, 1)
-
     usage_lpg_m3 = st.sidebar.number_input(
         "한 달에 몇 m³ 사용하세요?",
-        min_value=0.1, value=default_m3, step=0.1, format="%.1f",
-        help=f"계량기 또는 영수증에서 확인. 기본값은 약 20kg 기준({default_m3} m³)"
+        min_value=0.1, value=1.0, step=0.1, format="%.1f",
+        help="계량기 또는 영수증에서 확인하세요."
     )
     lpg_price_per_m3 = st.sidebar.number_input(
         "m³당 요금이 얼마예요? (원/m³)",
         min_value=0.0, value=3278.0, step=10.0, format="%.0f",
         help="영수증의 '단가' 항목을 확인하세요."
     )
-    supply_pressure_mmh2o = st.sidebar.number_input(
-        "공급압력 (mmH₂O)",
-        min_value=0.0, value=2500.0, step=100.0, format="%.0f",
-        help="모르시면 기본값(2,500) 그대로 두세요. 공급업체에 문의하면 확인 가능해요."
-    )
-
-    ATMOS_PRESSURE_MMH2O = 10332.0
-    LPG_STD_DENSITY      = 2.02
-    lpg_density       = LPG_STD_DENSITY * (ATMOS_PRESSURE_MMH2O + supply_pressure_mmh2o) / ATMOS_PRESSURE_MMH2O
-    lpg_price_per_kg  = lpg_price_per_m3 / lpg_density
-    lpg_price         = lpg_price_per_kg
-    lpg_mj_price_lpg  = lpg_price_per_kg / ENERGY_CONTENT["LPG(프로판 1호)"]
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("**💡 단가 환산 과정**")
-    st.sidebar.markdown(f"""
-**① m³당 단가 → kg당 단가**
-
-LPG는 부피(m³)로 계량되지만, 실제 에너지는 무게(kg) 기준이에요.
-압력이 높을수록 같은 부피에 LPG가 더 많이 담기기 때문에,
-공급압력을 반영해 무게로 환산합니다.
-
-> 공급압력 {supply_pressure_mmh2o:,.0f} mmH₂O 기준
-> 1 m³에 담긴 LPG 무게 = **{lpg_density:.3f} kg/m³**
-> {lpg_price_per_m3:,.0f} 원/m³ ÷ {lpg_density:.3f} = **{lpg_price_per_kg:,.1f} 원/kg**
-""")
-    st.sidebar.markdown(f"""
-**② kg당 단가 → MJ당 단가**
-
-LPG 1 kg을 태우면 50.4 MJ의 열량이 나와요.
-도시가스와 공평하게 비교하려면 같은 열량(MJ) 기준으로 맞춰야 해요.
-
-> {lpg_price_per_kg:,.1f} 원/kg ÷ 50.4 MJ/kg = **{lpg_mj_price_lpg:.2f} 원/MJ**
-""")
-    st.sidebar.success(f"✅ 최종 LPG 단가: **{lpg_mj_price_lpg:.2f} 원/MJ**")
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**📋 기화율 기준** (사용량 환산용)")
+    st.sidebar.markdown("**📋 기화율 기준** (열량 환산용)")
     st.sidebar.markdown(f"""
 | 항목 | 값 |
 |------|-----|
-| 표준 기화율 | {STANDARD_EVAPORATION_RATE} kg/m³ |
+| 표준 기화율 | {STANDARD_EVAPORATION_RATE} m³/kg |
 | 보정계수 ({regulator_pressure} kPa) | {correction} |
-| **실제 기화율** | **{evap_rate} kg/m³** |
+| **실제 기화율** | **{evap_rate} m³/kg** |
 """)
     st.sidebar.caption("출처: 대전·대구·울산광역시, 경북·경남 영남지역 기준")
 
-    usage_lpg_kg = usage_lpg_m3 * evap_rate
-    lpg_usage_display = f"{usage_lpg_m3:.2f} m³ → {usage_lpg_kg:.3f} kg"
+    # ── m³ 모드 계산 ──
+    lpg_cost         = usage_lpg_m3 * lpg_price_per_m3          # 단순화: m³ × 원/m³
+    usage_lpg_kg     = usage_lpg_m3 / evap_rate                  # 열량 환산용: m³ ÷ 기화율(m³/kg) = kg
+    lpg_usage_display = f"{usage_lpg_m3:.1f} m³"
 
 elif usage_type == "무게(kg)로 알아요":
     st.sidebar.markdown("💡 LPG 용기나 영수증에서 kg 단위를 확인할 수 있어요.")
@@ -164,6 +127,7 @@ elif usage_type == "무게(kg)로 알아요":
         min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.0f",
         help="영수증의 kg당 단가를 입력하세요."
     )
+    lpg_cost          = usage_lpg_kg * lpg_price
     lpg_usage_display = f"{usage_lpg_kg:.0f} kg"
 
 else:  # 요금으로 알아요
@@ -177,7 +141,8 @@ else:  # 요금으로 알아요
         min_value=0.0, value=float(DEFAULT_PRICES["LPG(프로판 1호)"]), format="%.0f",
         help="단가를 모르시면 공급업체에 문의하세요. 보통 2,000~3,000원/kg 수준이에요."
     )
-    usage_lpg_kg = usage_cost / lpg_price
+    usage_lpg_kg      = usage_cost / lpg_price
+    lpg_cost          = usage_cost
     lpg_usage_display = f"{usage_cost:,.0f} 원 → {usage_lpg_kg:.1f} kg"
 
 gas_mj_price     = st.sidebar.number_input("도시가스 가격 (원/MJ)", min_value=0.0, value=float(DEFAULT_PRICES["도시가스(LNG)"]), format="%.2f")
@@ -185,8 +150,7 @@ gas_install_cost = st.sidebar.number_input("도시가스 초기 공사비 (원)"
 
 # ── 공통 계산 ─────────────────────────────────────────────────────────────────
 usage_gj        = usage_lpg_kg * ENERGY_CONTENT["LPG(프로판 1호)"]  # LPG → MJ
-gas_cost        = usage_gj * gas_mj_price                            # MJ × 원/MJ
-lpg_cost        = usage_lpg_kg * lpg_price                           # kg × 원/kg (직접)
+gas_cost        = usage_gj * gas_mj_price
 monthly_savings = lpg_cost - gas_cost
 payback_period  = (gas_install_cost / monthly_savings) if monthly_savings > 0 else float("inf")
 cost_ratio      = (lpg_cost / gas_cost - 1) * 100
@@ -200,39 +164,39 @@ else:
 st.markdown("#### 계산 흐름도")
 st.caption("사이드바에서 값을 바꾸면 즉시 업데이트됩니다.")
 
-H = 88   # 모든 카드 공통 높이 (px)
+H = 88
 
 # ════════════════════════════════════════════════════════════
-# STEP 1-A (m³ 전용) — m³ → kg 환산
+# STEP 1-A (m³ 전용) — m³ → kg 환산 (열량 계산용)
 # ════════════════════════════════════════════════════════════
 if usage_type == "부피(m³)로 알아요":
-    section_title("① LPG 부피(m³) → 무게(kg) 환산")
-    section_caption("LPG는 부피로 계량되지만 에너지 계산은 무게(kg) 기준이에요. 공급압력에 따라 같은 부피에 담기는 무게가 달라집니다.")
+    section_title("① LPG 부피(m³) → 무게(kg) 환산 (열량 계산용)")
+    section_caption("도시가스와 동일한 열량(MJ) 기준으로 비교하기 위해 m³ → kg으로 환산합니다. 요금 계산에는 영향을 주지 않아요.")
 
     c1, cx, c2, ce, c3, _, c_note = st.columns([3, 1, 3, 1, 3, 0.3, 5])
     with c1:
         card("LPG 사용량", f"{usage_lpg_m3:.1f} m³",
              color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
     with cx:
-        op("×", H)
+        op("÷", H)
     with c2:
-        card("기화율", f"{evap_rate} kg/m³",
+        card("기화율", f"{evap_rate} m³/kg",
              sub=f"조정기 {regulator_pressure} kPa 기준",
              color="#065f46", bg="#f0fdf4", border="#16a34a", height=H)
     with ce:
         op("=", H)
     with c3:
         card("LPG 무게", f"{usage_lpg_kg:.3f} kg",
-             sub=f"{usage_lpg_m3:.1f} m³ × {evap_rate}",
+             sub=f"{usage_lpg_m3:.1f} m³ ÷ {evap_rate}",
              color="#065f46", bg="#f0fdf4", border="#16a34a", height=H)
     with c_note:
         st.markdown(f"""
 <div style='height:{H}px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
             padding:10px 12px;font-size:11.5px;color:#475569;box-sizing:border-box;
             display:flex;flex-direction:column;justify-content:center'>
-  <b>기화율이란?</b> LPG 1 m³가 기화했을 때의 무게(kg).<br>
-  압력이 높을수록 같은 부피에 더 많은 무게가 담겨요.<br>
-  <span style='color:#64748b'>표준 {STANDARD_EVAPORATION_RATE} ÷ 보정계수 {correction} = <b>{evap_rate} kg/m³</b></span>
+  <b>기화율이란?</b> LPG 1 kg이 기화했을 때의 부피(m³).<br>
+  m³ ÷ 기화율 = kg (부피 → 무게 환산).<br>
+  <span style='color:#64748b'>표준 {STANDARD_EVAPORATION_RATE} ÷ 보정계수 {correction} = <b>{evap_rate} m³/kg</b></span>
 </div>""", unsafe_allow_html=True)
 
     arrow_down()
@@ -281,27 +245,19 @@ with lpg_col:
     st.markdown("<div style='text-align:center;font-size:13px;font-weight:600;color:#be123c;margin-bottom:6px'>🔴 LPG (현재)</div>",
                 unsafe_allow_html=True)
     if usage_type == "부피(m³)로 알아요":
-        c1, cd, c2, ce1, c3, cx, c4, ce2, c5 = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 4])
+        # ← 단순화: m³ × m³당 단가
+        c1, cx, c2, ce, c3 = st.columns([3, 1, 3, 1, 4])
         with c1:
-            card("m³당 단가", f"{lpg_price_per_m3:,.0f} 원/m³",
-                 color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
-        with cd: op("÷", H)
-        with c2:
-            card("밀도", f"{lpg_density:.3f} kg/m³",
-                 sub=f"2.02×(10,332+{supply_pressure_mmh2o:,.0f})/10,332",
-                 color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
-        with ce1: op("=", H)
-        with c3:
-            card("kg당 단가", f"{lpg_price_per_kg:,.1f} 원/kg",
+            card("사용량", f"{usage_lpg_m3:.1f} m³",
                  color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
         with cx: op("×", H)
-        with c4:
-            card("사용량", f"{usage_lpg_kg:.3f} kg",
+        with c2:
+            card("m³당 단가", f"{lpg_price_per_m3:,.0f} 원/m³",
                  color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
-        with ce2: op("=", H)
-        with c5:
+        with ce: op("=", H)
+        with c3:
             card("LPG 요금", f"{lpg_cost:,.0f} 원",
-                 sub=f"{lpg_price_per_kg:,.1f} 원/kg × {usage_lpg_kg:.3f} kg",
+                 sub=f"{usage_lpg_m3:.1f} m³ × {lpg_price_per_m3:,.0f} 원/m³",
                  color="#9f1239", bg="#fff1f2", border="#e11d48", height=H)
     else:
         c1, cx, c2, ce, c3 = st.columns([3, 1, 3, 1, 4])
@@ -345,15 +301,16 @@ with gas_col:
              sub=f"{usage_gj:,.1f} MJ × {gas_mj_price:.2f} 원/MJ",
              color="#1e3a8a", bg="#eff6ff", border="#2563eb", height=H)
 
-# m³ 전용: MJ당 단가 직접 비교 뱃지
+# m³ 전용: MJ당 단가 참고용 뱃지
 if usage_type == "부피(m³)로 알아요":
-    lpg_mj_price_calc = lpg_price_per_kg / ENERGY_CONTENT["LPG(프로판 1호)"]
+    lpg_price_per_kg_ref = lpg_price_per_m3 / (usage_lpg_kg / usage_lpg_m3) if usage_lpg_m3 > 0 else 0
+    lpg_mj_price_calc    = lpg_price_per_kg_ref / ENERGY_CONTENT["LPG(프로판 1호)"]
     diff_pct = (lpg_mj_price_calc / gas_mj_price - 1) * 100
     diff_txt = f"LPG가 {diff_pct:.1f}% 더 {'비쌈' if diff_pct > 0 else '저렴'}"
     st.markdown(f"""
 <div style='background:#fef9c3;border:1px solid #ca8a04;border-radius:8px;
             padding:9px 16px;margin-top:8px;font-size:12.5px;color:#78350f'>
-  💡 <b>MJ당 단가 비교:</b>
+  💡 <b>MJ당 단가 참고:</b>
   LPG {lpg_mj_price_calc:.2f} 원/MJ &nbsp;vs&nbsp; 도시가스 {gas_mj_price:.2f} 원/MJ
   &nbsp;→&nbsp; <b>{diff_txt}</b>
 </div>""", unsafe_allow_html=True)
@@ -395,31 +352,9 @@ with c2:
          color="#5b21b6", bg="#faf5ff", border="#7c3aed", height=H)
 
 # ════════════════════════════════════════════════════════════
-# 하단 출처 + m³ 단가 환산 상세
+# 하단 출처
 # ════════════════════════════════════════════════════════════
 st.markdown("<br>", unsafe_allow_html=True)
-
-if usage_type == "부피(m³)로 알아요":
-    with st.expander("💡 단가 환산 과정 상세 보기"):
-        st.markdown(f"""
-**① m³당 단가 → kg당 단가**
-
-LPG는 부피(m³)로 계량되지만 실제 에너지는 무게(kg) 기준이에요.  
-압력이 높을수록 같은 부피에 LPG가 더 많이 담기기 때문에 공급압력을 반영해 무게로 환산합니다.
-
-> 공급압력 {supply_pressure_mmh2o:,.0f} mmH₂O 기준  
-> 밀도 = 2.02 × (10,332 + {supply_pressure_mmh2o:,.0f}) / 10,332 = **{lpg_density:.4f} kg/m³**  
-> {lpg_price_per_m3:,.0f} 원/m³ ÷ {lpg_density:.4f} kg/m³ = **{lpg_price_per_kg:,.1f} 원/kg**
-
-**② kg당 단가 → MJ당 단가**
-
-LPG 1 kg을 태우면 50.4 MJ의 열량이 나와요.  
-도시가스와 공평하게 비교하려면 같은 열량(MJ) 기준으로 맞춰야 해요.
-
-> {lpg_price_per_kg:,.1f} 원/kg ÷ 50.4 MJ/kg = **{lpg_mj_price_calc:.2f} 원/MJ**
-
-✅ **최종 LPG 단가: {lpg_mj_price_calc:.2f} 원/MJ** &nbsp;vs&nbsp; 도시가스 **{gas_mj_price:.2f} 원/MJ**
-""")
 
 with st.expander("📌 발열량 기준 출처"):
     st.markdown("""
